@@ -96,6 +96,7 @@ fun App(store: Store) {
     var err by remember { mutableStateOf<Result.Fail?>(null) }
     var solo by remember { mutableStateOf("") }
     var settings by remember { mutableStateOf(false) }
+    var blockers by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var note by remember { mutableStateOf("") }
     var stamp by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -105,6 +106,15 @@ fun App(store: Store) {
         when (val r = withContext(Dispatchers.IO) { Api.overview(store) }) {
             is Result.Ok -> { data = r.json; err = null; stamp = r.json.str("served_at") }
             is Result.Fail -> err = r
+        }
+        val b = withContext(Dispatchers.IO) { Api.blockers(store) }
+        if (b is Result.Ok) blockers = b.json.arr("items").filter { it.str("state").ifEmpty { "open" } == "open" }
+    }
+    fun blockerAct(id: String, action: String) {
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { Api.blocker(store, id, action) }
+            note = when (r) { is Result.Ok -> (if (action == "solve") "the Mac presents it: " else "done: ") + id; is Result.Fail -> "NOT sent: " + r.text }
+            refresh()
         }
     }
     // auto-refresh every 5 s, only while the app is visible
@@ -131,7 +141,10 @@ fun App(store: Store) {
                 Mono("Agent Manager (CEO) (Mantra)", Ink.text, 16, true)
                 Mono(if (stamp.isEmpty()) "not connected yet" else "as of $stamp · every 5 s", Ink.grey, 11)
             }
-            WordButton(if (settings) "BACK" else "SETTINGS", Ink.dim, "settings") { settings = !settings }
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                VersionLabel()
+                WordButton(if (settings) "BACK" else "SETTINGS", Ink.dim, "settings") { settings = !settings }
+            }
         }
         if (settings) {
             SettingsPane(store) { settings = false }
@@ -142,6 +155,9 @@ fun App(store: Store) {
                 if (note.isNotEmpty()) Mono(note, if (note.startsWith("NOT")) Ink.red else Ink.green, 11)
                 val d = data
                 if (d != null) {
+                    UsageHeader(d)
+                    RunningList(d)
+                    BlockerList(blockers, ::blockerAct)
                     Tiles(d, solo) { solo = if (solo == it) "" else it }
                     if (solo.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Mono("SOLO: " + solo.uppercase(), Ink.amber, 11); WordButton("SHOW ALL", Ink.amber, "solo-clear") { solo = "" }
@@ -155,9 +171,94 @@ fun App(store: Store) {
                     Spacer(Modifier.height(8.dp))
                 } else if (e == null) Mono("loading…", Ink.grey, 12)
             }
-            data?.let { StatusBar(it) }
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+const val RELEASES_URL = "https://github.com/markoboskoauroville/AGENT_MANAGER_ANDROID/releases/latest"
+
+/** upper right: the version from BuildConfig; a tap opens the latest release (MANTRA_MANIFEST modules/app-version-and-parity.md) */
+@Composable
+fun VersionLabel() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    Mono("v" + BuildConfig.VERSION_NAME, Ink.dim, 13, true, Modifier.testTag("version").clip(RoundedCornerShape(6.dp)).clickable {
+        try { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(RELEASES_URL)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        catch (e: Exception) { android.widget.Toast.makeText(ctx, "No browser to open " + RELEASES_URL, android.widget.Toast.LENGTH_LONG).show() }
+    }.padding(horizontal = 6.dp, vertical = 4.dp))
+}
+
+@Composable
+fun UsageFigure(label: String, p: Int?, reset: String, color: Color, tag: String) {
+    Column(Modifier.fillMaxWidth().testTag(tag), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Mono(label, Ink.dim, 12, true, Modifier.padding(bottom = 4.dp))
+            Text(if (p == null) "unknown" else "$p%", color = if (p == null) Ink.grey else color, fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Mono(reset, Ink.dim, 12, modifier = Modifier.padding(bottom = 4.dp))
+        }
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.10f))) {
+            Box(Modifier.fillMaxWidth((p ?: 0).coerceIn(0, 100) / 100f).fillMaxHeight().background(color))
+        }
+    }
+}
+
+@Composable
+fun UsageHeader(d: JSONObject) {
+    val set = d.obj("mac").obj("settings"); val rl = set.obj("usage").obj("rate_limits")
+    fun pct(k: String): Int? = rl.obj(k).let { if (it.has("used_percentage") && !it.isNull("used_percentage")) it.optInt("used_percentage") else null }
+    fun reset(k: String): String { val left = rl.obj(k).optLong("resets_at", 0) - System.currentTimeMillis() / 1000; return if (left > 0) "resets in " + ago(left.toInt()) else "" }
+    Column(Modifier.fillMaxWidth().testTag("usageheader"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        UsageFigure("SESSION (5 h)", pct("five_hour"), reset("five_hour"), pctColor(pct("five_hour") ?: 0).let { if (it == Ink.dim) Ink.green else it }, "usage-session")
+        UsageFigure("WEEK", pct("seven_day"), reset("seven_day"), Ink.orange, "usage-week")
+        Mono(listOf(set.str("model"), set.str("effort_default"), "RC@start " + (if (set.optBoolean("rc_at_startup")) "on" else "off")).filter { it.isNotBlank() }.joinToString(" · "), Ink.grey, 11)
+    }
+}
+
+/** only busy sessions and running agents; idle ones are not listed (Mac v19) */
+@Composable
+fun RunningList(d: JSONObject) {
+    val mac = d.obj("mac")
+    val busy = d.obj("sessions_all").arr("rows").filter { it.str("state") == "busy" }
+    val agents = mac.arr("sessions").flatMap { s -> s.arr("tasks").filter { it.str("kind") == "agent" && it.optBoolean("running", false) }.map { s to it } }
+    Column(Modifier.fillMaxWidth().testTag("running"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Mono("RUNNING", Ink.green, 12, true)
+        if (busy.isEmpty() && agents.isEmpty()) Mono("Nothing is running", Ink.grey, 12)
+        for (r in busy) {
+            val mo = r.obj("modes"); val model = mo.str("current_model").ifEmpty { mo.str("model") }.ifEmpty { modelOf(mac, r.str("name")) }
+            Text(buildAnnotatedString {
+                withStyle(SpanStyle(color = Ink.text, fontWeight = FontWeight.Bold)) { append(r.str("name")) }
+                if (model.isNotEmpty()) withStyle(SpanStyle(color = Ink.orange)) { append(" ($model)") }
+                withStyle(SpanStyle(color = Ink.grey)) { append("  " + r.str("device")) }
+            }, fontSize = 14.sp, fontFamily = FontFamily.Monospace, lineHeight = 19.sp)
+        }
+        for ((s, t) in agents) {
+            val model = t.str("model")
+            Text(buildAnnotatedString {
+                withStyle(SpanStyle(color = Ink.text)) { append(t.str("desc").ifEmpty { "agent" }) }
+                if (model.isNotEmpty()) withStyle(SpanStyle(color = Ink.orange)) { append(" ($model)") }
+                withStyle(SpanStyle(color = Ink.grey)) { append("  agent of " + s.str("base").ifEmpty { s.str("name") }) }
+            }, fontSize = 14.sp, fontFamily = FontFamily.Monospace, lineHeight = 19.sp)
+        }
+    }
+}
+
+/** hidden when empty; SOLVE asks the Mac to present it in the real place, DONE closes it */
+@Composable
+fun BlockerList(list: List<JSONObject>, act: (String, String) -> Unit) {
+    if (list.isEmpty()) return
+    Column(Modifier.fillMaxWidth().testTag("blockers"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Mono("WHAT STOPPED ME", Ink.orange, 12, true)
+        for (b in list) {
+            val id = b.str("id")
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Ink.orange.copy(alpha = 0.10f)).border(1.dp, Ink.orange.copy(alpha = 0.7f), RoundedCornerShape(10.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Mono(b.str("text"), Ink.text, 14)
+                Mono(listOf(b.str("who"), b.str("kind"), ago(b.optInt("age", 0)) + " ago").filter { it.isNotBlank() }.joinToString(" · "), Ink.dim, 11)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    WordButton("SOLVE", Ink.orange, "solve-$id") { act(id, "solve") }
+                    WordButton("DONE", Ink.green, "done-$id") { act(id, "done") }
+                }
+            }
+        }
     }
 }
 

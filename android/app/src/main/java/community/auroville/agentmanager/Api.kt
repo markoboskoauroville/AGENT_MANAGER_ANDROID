@@ -44,7 +44,7 @@ object Api {
             val text = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
             when {
                 code == 401 -> Result.Fail("token", "The Mac refused the token.")
-                code in 200..299 -> Result.Ok(JSONObject(text))
+                code in 200..299 -> Result.Ok(if (text.trimStart().startsWith("[")) JSONObject().put("items", JSONArray(text)) else JSONObject(text))
                 else -> Result.Fail("other", "HTTP $code " + text.take(120))
             }
         } catch (e: java.io.IOException) {
@@ -55,6 +55,9 @@ object Api {
     }
 
     fun overview(store: Store): Result = call(store, "/overview", null)
+
+    fun blockers(store: Store): Result = call(store, "/blockers", null)
+    fun blocker(store: Store, id: String, action: String): Result = call(store, "/blocker/$action", JSONObject().put("id", id).toString())
 
     fun command(store: Store, slug: String, agent: String, task: Int, action: String, text: String): Result {
         val j = JSONObject().put("slug", slug).put("agent", agent).put("task", task).put("action", action).put("text", text)
