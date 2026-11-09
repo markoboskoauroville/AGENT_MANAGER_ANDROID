@@ -60,7 +60,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun Mono(t: String, c: Color = Ink.text, size: Int = 12, bold: Boolean = false, modifier: Modifier = Modifier) {
-    Text(t, color = c, fontSize = size.sp, fontFamily = FontFamily.Monospace, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, modifier = modifier, lineHeight = (size + 4).sp)
+    val sz = when (size) { 10 -> 12; 11 -> 14; 12 -> 14; 13 -> 16; 16 -> 19; else -> size }
+    Text(t, color = c, fontSize = sz.sp, fontFamily = FontFamily.Monospace, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, modifier = modifier, lineHeight = (sz + 5).sp)
 }
 
 @Composable
@@ -209,21 +210,24 @@ fun Tiles(d: JSONObject, solo: String, pick: (String) -> Unit) {
     val tiles = listOf(
         Triple("done", n("done").toString(), "DONE") to Ink.green, Triple("running", n("running").toString(), "RUNNING") to Ink.amber,
         Triple("paused", n("paused").toString(), "PAUSED") to Ink.dim, Triple("failed", n("failed").toString(), "FAILED") to Ink.red,
-        Triple("todo", n("todo").toString(), "TO DO") to Ink.grey, Triple("sessions", sess.toString(), "SESS.") to Ink.text,
+        Triple("todo", n("todo").toString(), "TO DO") to Ink.grey, Triple("sessions", sess.toString(), "SESSIONS") to Ink.text,
         Triple("vm", if (vmUp) "UP" else "DOWN", "VM") to (if (vmUp) Ink.green else Ink.red)
     )
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        for ((x, col) in tiles) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+      for (rowTiles in tiles.chunked(4)) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        for ((x, col) in rowTiles) {
             val on = solo == x.first
             Column(
                 Modifier.weight(1f).testTag("solo-" + x.first).clip(RoundedCornerShape(8.dp)).background(if (on) col.copy(alpha = 0.18f) else Color.Transparent)
                     .border(1.5.dp, if (on) col else Color.Transparent, RoundedCornerShape(8.dp)).clickable { pick(x.first) }.padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(x.second, color = col, fontSize = 19.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                Text(x.third, color = if (on) Ink.text else Ink.grey, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(x.second, color = col, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(x.third, color = if (on) Ink.text else Ink.dim, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1)
             }
         }
+        if (rowTiles.size < 4) repeat(4 - rowTiles.size) { Spacer(Modifier.weight(1f)) }
+      }
     }
 }
 
@@ -267,23 +271,23 @@ fun TaskRow(slug: String, t: JSONObject, send: (String, String, Int, String, Str
     val checked = t.optBoolean("checked", false)
     Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Row(Modifier.fillMaxWidth().clickable { open = !open }.testTag("task$n"), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-            Mono(if (checked) "✓" else "○", if (checked) Ink.green else Ink.grey, 13, true)
-            Mono("$n.", Ink.dim, 12)
+            Mono(if (checked) "✓" else "○", if (checked) Ink.green else Ink.grey, 17, true)
+            Mono("$n.", Ink.dim, 16)
             Column(Modifier.weight(1f)) {
-                Mono(t.str("title"), Ink.text, 12)
+                Mono(t.str("title"), Ink.text, 17)
                 if (t.optBoolean("focus", false)) Mono("IN FOCUS", Ink.amber, 10, true)
             }
             Mono(st.uppercase(), statusColor(st), 10, true)
         }
-        if (agent.isNotEmpty()) Mono("worker $agent", Ink.dim, 10, modifier = Modifier.padding(start = 40.dp))
-        if (st == "running" || st == "paused") Row(Modifier.padding(start = 40.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (agent.isNotEmpty()) Mono("worker $agent", Ink.dim, 10, modifier = Modifier.padding(start = 48.dp))
+        if (st == "running" || st == "paused") Row(Modifier.padding(start = 48.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             WordButton("PAUSE", Ink.text, "pause$n") { send(slug, agent, n, "pause", "") }
             if (!armed) WordButton("STOP", Ink.red, "stop$n") { armed = true }
             else WordButton("SURE?", Ink.red, "stop-sure$n") { armed = false; send(slug, agent, n, "stop", "") }
             WordButton("MESSAGE", Ink.amber, "msg$n") { msg = !msg }
         }
         if (st == "paused") Column(
-            Modifier.padding(start = 40.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Ink.amber.copy(alpha = 0.10f)).border(1.dp, Ink.amber.copy(alpha = 0.6f), RoundedCornerShape(8.dp)).padding(10.dp),
+            Modifier.padding(start = 48.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Ink.amber.copy(alpha = 0.10f)).border(1.dp, Ink.amber.copy(alpha = 0.6f), RoundedCornerShape(8.dp)).padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Mono("WAITING FOR YOU", Ink.amber, 10, true)
@@ -291,11 +295,11 @@ fun TaskRow(slug: String, t: JSONObject, send: (String, String, Int, String, Str
             Field(draft, "reply$n") { draft = it }
             WordButton("REPLY", Ink.green, "reply-send$n") { if (draft.isNotBlank()) { send(slug, agent, n, "message", draft.trim()); draft = "" } }
         }
-        if (msg && st != "paused") Column(Modifier.padding(start = 40.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (msg && st != "paused") Column(Modifier.padding(start = 48.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Field(draft, "message$n") { draft = it }
             WordButton("SEND", Ink.green, "msg-send$n") { if (draft.isNotBlank()) { send(slug, agent, n, "message", draft.trim()); draft = ""; msg = false } }
         }
-        if (open) Column(Modifier.padding(start = 40.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (open) Column(Modifier.padding(start = 48.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Mono(t.str("report").ifEmpty { "no report yet" }, if (t.str("report").isEmpty()) Ink.grey else Ink.text, 11)
             if (t.str("next").isNotEmpty()) Mono("next: " + t.str("next"), Ink.dim, 11)
             if (st != "running" && st != "paused" && agent.isNotEmpty()) WordButton("MESSAGE", Ink.amber, "msg-open$n") { msg = !msg }
@@ -326,7 +330,7 @@ fun SessionsPanel(d: JSONObject) {
                     if (model.isNotEmpty()) withStyle(SpanStyle(color = Ink.orange)) { append(" ($model)") }
                     withStyle(SpanStyle(color = Ink.grey)) { append("  " + r.str("kind")) }
                     withStyle(SpanStyle(color = statusColor(st), fontWeight = FontWeight.Bold)) { append("  " + st.uppercase()) }
-                }, fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 15.sp)
+                }, fontSize = 14.sp, fontFamily = FontFamily.Monospace, lineHeight = 19.sp)
             }
         }
     }
@@ -358,7 +362,7 @@ fun pctColor(p: Int) = if (p >= 85) Ink.red else if (p >= 60) Ink.amber else Ink
 fun StatusBar(d: JSONObject) {
     val mac = d.obj("mac"); val set = mac.obj("settings"); val rl = set.obj("usage").obj("rate_limits")
     Column(
-        Modifier.fillMaxWidth().heightIn(max = 130.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF0C0C0E)).border(1.dp, Ink.line, RoundedCornerShape(10.dp))
+        Modifier.fillMaxWidth().heightIn(max = 230.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF0C0C0E)).border(1.dp, Ink.line, RoundedCornerShape(10.dp))
             .verticalScroll(rememberScrollState()).padding(8.dp).testTag("statusbar"),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
@@ -367,9 +371,9 @@ fun StatusBar(d: JSONObject) {
             withStyle(SpanStyle(color = Ink.text)) { append(set.str("model") + " · " + set.str("effort_default") + " · RC at start " + (if (set.optBoolean("rc_at_startup")) "on" else "off")) }
             withStyle(SpanStyle(color = Ink.dim)) { append(" · 5h ") }
             withStyle(SpanStyle(color = pctColor(rl.obj("five_hour").optInt("used_percentage")))) { append(usage(rl, "five_hour")) }
-            withStyle(SpanStyle(color = Ink.dim)) { append(" · week ") }
-            withStyle(SpanStyle(color = pctColor(rl.obj("seven_day").optInt("used_percentage")))) { append(usage(rl, "seven_day")) }
-        }, fontSize = 10.sp, fontFamily = FontFamily.Monospace, lineHeight = 14.sp)
+            withStyle(SpanStyle(color = Ink.orange)) { append(" · week ") }
+            withStyle(SpanStyle(color = Ink.orange, fontWeight = FontWeight.Bold)) { append(usage(rl, "seven_day")) }
+        }, fontSize = 14.sp, fontFamily = FontFamily.Monospace, lineHeight = 19.sp)
         for (s in mac.arr("sessions")) {
             val m = s.obj("modes"); val busy = s.str("status") == "busy"
             val model = (m.str("current_model").ifEmpty { m.str("model") })
@@ -378,7 +382,7 @@ fun StatusBar(d: JSONObject) {
                 withStyle(SpanStyle(color = if (busy) Ink.orange else Ink.dim)) { append(" $model") }
                 withStyle(SpanStyle(color = Ink.dim)) { append(" · ${m.str("effort")} · ${m.str("permission")} · RC ${if (m.optBoolean("rc")) "on" else "off"} · router ${m.str("router")}") }
                 if (m.has("ctx") && !m.isNull("ctx")) withStyle(SpanStyle(color = pctColor(m.optInt("ctx")))) { append(" · ctx ${m.optInt("ctx")}%") }
-            }, fontSize = 10.sp, fontFamily = FontFamily.Monospace, lineHeight = 14.sp)
+            }, fontSize = 14.sp, fontFamily = FontFamily.Monospace, lineHeight = 19.sp)
         }
     }
 }
