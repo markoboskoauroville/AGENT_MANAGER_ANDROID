@@ -238,7 +238,12 @@ fun PlanCard(p: JSONObject, solo: String, send: (String, String, Int, String, St
     val done = tasks.count { it.str("status") == "done" }
     val run = tasks.count { it.str("status") == "running" }
     val focus = tasks.firstOrNull { it.optBoolean("focus", false) }
-    val shown = if (solo in listOf("done", "running", "paused", "failed", "todo")) tasks.filter { it.str("status") == solo } else tasks
+    val shown0 = if (solo in listOf("done", "running", "paused", "failed", "todo")) tasks.filter { it.str("status") == solo } else tasks
+    // IN FOCUS first, running/paused, the rest, then DONE newest first (doneAt, else the higher n is newer)
+    fun rank(t: JSONObject) = when (t.str("status")) { "running", "paused" -> 0; "done" -> 2; else -> 1 }
+    val shown = shown0.sortedWith(compareBy<JSONObject>({ if (it.optBoolean("focus", false)) 0 else 1 }, { rank(it) }).thenComparator { a, b ->
+        if (rank(a) == 2) { val c = b.str("doneAt").compareTo(a.str("doneAt")); if (c != 0) c else b.optInt("n").compareTo(a.optInt("n")) } else a.optInt("n").compareTo(b.optInt("n"))
+    })
     Panel("Session Manager · " + p.str("session").ifEmpty { p.str("project") }, "$done of ${tasks.size} done · updated ${ago(p.optInt("age", 0))} ago") {
         if (p.str("project").isNotEmpty()) Mono(p.str("project"), Ink.text, 12)
         if (p.str("goal").isNotEmpty()) Mono(p.str("goal"), Ink.dim, 11)

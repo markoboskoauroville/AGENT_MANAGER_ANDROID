@@ -5,3 +5,4 @@
 3. (9.11.2026) Compiled only by GitHub: the first build is the compile check.
 2. (9.11.2026, v2) Icon: black background, the letters CEO only, white, SF Rounded Black outlines baked as one vector path (no font needed), ink bbox inside the 66 dp safe circle and centred within 0.1 %. Launcher label "CEO". Legacy mipmap PNGs from the same render.
 3. (9.11.2026, v3) Marko: the status text was too small. Body/status text 14 sp, smallest captions 12 sp, task titles 17 sp, tiles 26 sp numbers with 12 sp labels in two rows (4 + 3) so nothing is cut, status bar up to 230 dp, wrapping. The WEEK usage is orange (Ink.orange, as the model in brackets); the 5-hour window keeps its thresholds.
+4. (9.11.2026, v4) Marko: DONE newest first. Order: IN FOCUS, running/paused, todo/blocked/failed, DONE by doneAt desc (else higher n first).
