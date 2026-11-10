@@ -29,11 +29,22 @@ object Api {
         return "http://" + if (a.contains(":")) a else "$a:8847"
     }
 
-    private fun call(store: Store, path: String, body: String?): Result {
-        if (store.address.isBlank() || store.token.isBlank()) return Result.Fail("setup", "Enter the Mac's Tailscale address and the token in SETTINGS.")
+    /** the typed address first, then the Mac's Tailscale name (MagicDNS), so the Mac is found even when its 100.x address changed */
+    private fun call(store: Store, path: String, body: String?, readMs: Int = 20000): Result {
+        if (store.token.isBlank()) return Result.Fail("setup", "Enter the token in SETTINGS (the Mac is found by its Tailscale name).")
+        var last: Result = Result.Fail("tailscale", "Cannot reach the Mac.")
+        for (addr in listOf(store.address, "macbook-pro").filter { it.isNotBlank() }.distinct()) {
+            val r = one(store, addr, path, body, readMs)
+            if (!(r is Result.Fail && r.kind == "tailscale")) return r
+            last = r
+        }
+        return last
+    }
+
+    private fun one(store: Store, addr: String, path: String, body: String?, readMs: Int): Result {
         return try {
-            val c = URL(base(store.address) + path).openConnection() as HttpURLConnection
-            c.connectTimeout = 4000; c.readTimeout = 20000
+            val c = URL(base(addr) + path).openConnection() as HttpURLConnection
+            c.connectTimeout = 3000; c.readTimeout = readMs
             c.setRequestProperty("Authorization", "Bearer " + store.token)
             if (body != null) {
                 c.requestMethod = "POST"; c.doOutput = true
@@ -55,6 +66,9 @@ object Api {
     }
 
     fun overview(store: Store): Result = call(store, "/overview", null)
+
+    /** long poll: the Mac holds the request up to 20 s and answers the moment a plan, command or session changes */
+    fun live(store: Store, since: Int): Result = call(store, "/live?since=$since", null, 30000)
 
     fun blockers(store: Store): Result = call(store, "/blockers", null)
     fun blocker(store: Store, id: String, action: String): Result = call(store, "/blocker/$action", JSONObject().put("id", id).toString())

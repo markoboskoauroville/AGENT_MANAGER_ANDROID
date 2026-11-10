@@ -102,13 +102,19 @@ fun App(store: Store) {
     val scope = rememberCoroutineScope()
     val owner = LocalLifecycleOwner.current
 
+    var lastOk by remember { mutableStateOf(0L) }
+    var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    var ver by remember { mutableStateOf(-1) }
+    fun apply(j: JSONObject) {
+        data = j; err = null; stamp = j.str("served_at"); lastOk = System.currentTimeMillis(); ver = j.optInt("ver", -1)
+        val b = j.optJSONArray("blockers")
+        if (b != null) blockers = b.list().filter { it.str("state").ifEmpty { "open" } == "open" }
+    }
     suspend fun refresh() {
         when (val r = withContext(Dispatchers.IO) { Api.overview(store) }) {
-            is Result.Ok -> { data = r.json; err = null; stamp = r.json.str("served_at") }
+            is Result.Ok -> apply(r.json)
             is Result.Fail -> err = r
         }
-        val b = withContext(Dispatchers.IO) { Api.blockers(store) }
-        if (b is Result.Ok) blockers = b.json.arr("items").filter { it.str("state").ifEmpty { "open" } == "open" }
     }
     fun blockerAct(id: String, action: String) {
         scope.launch {
@@ -117,12 +123,21 @@ fun App(store: Store) {
             refresh()
         }
     }
-    // auto-refresh every 5 s, only while the app is visible
+    // live: long poll, the Mac answers the moment something changes (v6); retries by itself after any network change
     LaunchedEffect(owner, settings) {
         owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) { refresh(); delay(5000) }
+            ver = -1
+            var back = 500L
+            while (true) {
+                when (val r = withContext(Dispatchers.IO) { Api.live(store, ver) }) {
+                    is Result.Ok -> { apply(r.json); back = 500L }
+                    is Result.Fail -> { err = r; delay(back); back = minOf(back * 2, 4000L) }
+                }
+                delay(150)
+            }
         }
     }
+    LaunchedEffect(Unit) { while (true) { nowMs = System.currentTimeMillis(); delay(1000) } }
     fun send(slug: String, agent: String, task: Int, action: String, text: String = "") {
         scope.launch {
             val r = withContext(Dispatchers.IO) { Api.command(store, slug, agent, task, action, text) }
@@ -139,7 +154,9 @@ fun App(store: Store) {
         Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Mono("Agent Manager (CEO) (Mantra)", Ink.text, 16, true)
-                Mono(if (stamp.isEmpty()) "not connected yet" else "as of $stamp · every 5 s", Ink.grey, 11)
+                val ago = if (lastOk == 0L) -1L else (nowMs - lastOk) / 1000
+                val live = ago in 0..30 && err == null
+                Mono(if (lastOk == 0L) "connecting to the Mac ..." else (if (live) "LIVE" else "OFFLINE, retrying") + " · last update ${maxOf(ago, 0)} s ago · $stamp", if (live) Ink.green else Ink.red, 11)
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 VersionLabel()
