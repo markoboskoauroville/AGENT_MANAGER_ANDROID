@@ -9,3 +9,5 @@
 **Marko, 9.11.2026 (Nothing Phone):** "Use VPN tunnelling through Tailscale to debug this phone and install the latest version of CEO automatically."
 
 **Marko, 10.11.2026 (CEO on the phone lags):** "and fix my CEO on my phone, which is not updating uh as it's supposed to be updating, it's kind of lagging and it's not in real time. And make this app actually recognizations on my Mac so it can always be connected and having real information."
+
+**10.11.2026, Marko (task 90):** "if there are any buttons to be pressed ... highlight that button so I know I can press it ... any app are developing should have the same behavior" Status: pressed/hover highlight via shared pressable modifier, v7.

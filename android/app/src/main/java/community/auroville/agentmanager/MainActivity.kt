@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -64,11 +65,22 @@ fun Mono(t: String, c: Color = Ink.text, size: Int = 12, bold: Boolean = false, 
     Text(t, color = c, fontSize = sz.sp, fontFamily = FontFamily.Monospace, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, modifier = modifier, lineHeight = (sz + 5).sp)
 }
 
+// Shared pressable (MANTRA_MANIFEST workflow-interface.md, "Pressable controls highlight"): pressed highlight for touch,
+// hover highlight for mouse/stylus; every clickable in the app goes through this, nothing else highlights.
+fun Modifier.pressable(enabled: Boolean = true, onClick: () -> Unit): Modifier = composed {
+    val src = remember { MutableInteractionSource() }
+    val hot by src.collectIsHoveredAsState()
+    val down by src.collectIsPressedAsState()
+    val a = if (!enabled) 0f else if (down) 0.22f else if (hot) 0.12f else 0f
+    this.hoverable(src, enabled).background(Color.White.copy(alpha = a))
+        .clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick)
+}
+
 @Composable
 fun WordButton(word: String, color: Color = Ink.text, tag: String = "", onClick: () -> Unit) {
     Box(
         Modifier.testTag(tag).clip(RoundedCornerShape(8.dp)).border(1.dp, color.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
-            .clickable { onClick() }.padding(horizontal = 14.dp, vertical = 10.dp),
+            .pressable { onClick() }.padding(horizontal = 14.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) { Mono(word, color, 12, true) }
 }
@@ -199,7 +211,7 @@ const val RELEASES_URL = "https://github.com/markoboskoauroville/AGENT_MANAGER_A
 @Composable
 fun VersionLabel() {
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    Mono("v" + BuildConfig.VERSION_NAME, Ink.dim, 13, true, Modifier.testTag("version").clip(RoundedCornerShape(6.dp)).clickable {
+    Mono("v" + BuildConfig.VERSION_NAME, Ink.dim, 13, true, Modifier.testTag("version").clip(RoundedCornerShape(6.dp)).pressable {
         try { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(RELEASES_URL)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
         catch (e: Exception) { android.widget.Toast.makeText(ctx, "No browser to open " + RELEASES_URL, android.widget.Toast.LENGTH_LONG).show() }
     }.padding(horizontal = 6.dp, vertical = 4.dp))
@@ -337,7 +349,7 @@ fun Tiles(d: JSONObject, solo: String, pick: (String) -> Unit) {
             val on = solo == x.first
             Column(
                 Modifier.weight(1f).testTag("solo-" + x.first).clip(RoundedCornerShape(8.dp)).background(if (on) col.copy(alpha = 0.18f) else Color.Transparent)
-                    .border(1.5.dp, if (on) col else Color.Transparent, RoundedCornerShape(8.dp)).clickable { pick(x.first) }.padding(vertical = 8.dp),
+                    .border(1.5.dp, if (on) col else Color.Transparent, RoundedCornerShape(8.dp)).pressable { pick(x.first) }.padding(vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(x.second, color = col, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1)
@@ -393,7 +405,7 @@ fun TaskRow(slug: String, t: JSONObject, send: (String, String, Int, String, Str
     var armed by remember(slug, n) { mutableStateOf(false) }
     val checked = t.optBoolean("checked", false)
     Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Row(Modifier.fillMaxWidth().clickable { open = !open }.testTag("task$n"), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+        Row(Modifier.fillMaxWidth().pressable { open = !open }.testTag("task$n"), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
             Mono(if (checked) "✓" else "○", if (checked) Ink.green else Ink.grey, 17, true)
             Mono("$n.", Ink.dim, 16)
             Column(Modifier.weight(1f)) {
